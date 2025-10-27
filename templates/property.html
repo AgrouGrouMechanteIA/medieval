@@ -1,0 +1,1 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Properties</title></head><body><a href='{{ url_for("world.game") }}'>← Back</a><h1>Your Properties</h1>{% for p in properties %}<div>At {{ p.location }} planted {{ p.planted_item or 'empty' }}</div>{% else %}<div>No properties</div>{% endfor %}</body></html>

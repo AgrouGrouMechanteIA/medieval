@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Medieval Explorer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+  <div class="header pixel-border">
+    <div class="header-top">
+      <h1 class="game-title">⚔ MEDIEVAL EXPLORER ⚔</h1>
+      <div class="user-info">
+        {% if session.user_id %}
+          <div class="username">{{ player.nickname }}</div>
+        {% else %}
+          <a href="{{ url_for('auth.login') }}">Login</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-label">❤ HEALTH</div><div class="stat-value">{{ player.health }}/5</div></div>
+      <div class="stat"><div class="stat-label">🍖 HUNGER</div><div class="stat-value">{{ player.hunger }}/2</div></div>
+      <div class="stat"><div class="stat-label">🧠 INT</div><div class="stat-value">{{ player.intelligence }}</div></div>
+      <div class="stat"><div class="stat-label">⭐ LEVEL</div><div class="stat-value">{{ player.level }}</div></div>
+      <div class="stat"><div class="stat-label">💰 MONEY</div><div class="stat-value">{{ player.money_shillings//20 }}£ {{ player.money_shillings%20 }}s</div></div>
+    </div>
+  </div>
+
+  <div class="nav-menu pixel-border">
+    <div class="nav-grid">
+      <a class="nav-btn active" href="{{ url_for('world.game') }}">🏰 LOCATION</a>
+      <a class="nav-btn" href="{{ url_for('market.index') }}">🏪 MARKET</a>
+      <a class="nav-btn" href="{{ url_for('properties.list_props') }}">🏠 PROPERTY</a>
+      <a class="nav-btn" href="{{ url_for('tavern.tavern', location=player.location) }}">🍺 TAVERN</a>
+      {% if player and player.user and player.user.is_admin %}
+        <form method="post" action="{{ url_for('admin.next_turn') }}" style="display:inline;"><button class="nav-btn">Next Turn</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <div>
+      <div class="location-card pixel-border">
+        <h2 class="location-name">🌊 {{ player.location }}</h2>
+        <p class="location-description">Waves crash endlessly against the weathered docks. Fishermen mend their nets under the gray sky.</p>
+        <div class="actions-grid">
+          <button class="action-btn" onclick="alert('Open market')">🏪 MARKET</button>
+          <button class="action-btn" onclick="alert('Work')">⚒ WORK</button>
+          <button class="action-btn" onclick="alert('Travel')">🚶 TRAVEL</button>
+          <button class="action-btn" onclick="alert('Tavern')">🍺 TAVERN</button>
+        </div>
+        <div class="boat-tracker"><div class="boat-tracker-title">🚢 BOAT STATUS</div><div class="boat-status">AT: <span class="boat-position">{{ boat_pos }}</span></div></div>
+      </div>
+    </div>
+
+    <div class="panel pixel-border">
+      <h2 class="panel-title">🎒 INVENTORY</h2>
+      {% for it in player.inventory %}
+        <div class="inventory-item"><span class="item-name">{{ it.item.name }}</span><div style="display:flex;gap:8px;"><span class="item-quantity">×{{ it.qty }}</span><div class="item-actions"><button class="item-btn eat" onclick="eatItem('{{ it.item.name }}')">EAT</button></div></div></div>
+      {% else %}
+        <div>No items</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='game.js') }}"></script>
+<script>
+function eatItem(name){
+  fetch('/api/eat', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({item:name})})
+  .then(r=>r.json()).then(j=>{ if(j.error) alert(j.error); else alert('Ate '+name); location.reload(); });
+}
+</script>
+</body>
+</html>

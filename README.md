@@ -1,0 +1,1 @@
+# Medieval Explorer - Generated project\nSet DATABASE_URL and SECRET_KEY in Render environment variables.\n
