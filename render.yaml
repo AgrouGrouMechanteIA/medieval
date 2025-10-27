@@ -1,1 +1,11 @@
-services:\n  - type: web\n    name: medieval-explorer\n    env: python\n    branch: main\n    buildCommand: pip install -r requirements.txt\n    startCommand: gunicorn wsgi:application\n
+services:
+  - type: web
+    name: medieval-explorer
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn wsgi:app"
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DATABASE_URL
+        sync: false
