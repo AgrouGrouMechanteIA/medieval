@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="main-layout">
+  <div>
+    {% if notification %}
+      <div class="notification">{{ notification }}</div>
+    {% endif %}
+
+    <div id="locationView">
+      <div class="location-card pixel-border">
+        <h2 style="color:#ffed4e;">🌊 {{ city.name }}</h2>
+        <p style="color:#e8f4e8;line-height:1.6;padding:8px;background:rgba(0,0,0,0.2);border:2px solid #654321;">{{ city_desc }}</p>
+        <div class="actions-grid" style="margin-top:8px;">
+          <a class="action-btn" href="{{ url_for('market_page') }}">🏪 MARKET</a>
+          <a class="action-btn" href="{{ url_for('inventory_page') }}">🎒 INVENTORY</a>
+          <a class="action-btn" href="{{ url_for('tavern_page') }}">🍺 TAVERN</a>
+          <a class="action-btn" href="{{ url_for('info_page') }}">ℹ INFO</a>
+        </div>
+
+        <div style="margin-top:12px;padding:10px;background:rgba(0,0,0,0.25);border:2px solid #654321;">
+          <div style="color:#ffed4e;font-weight:bold;">🚢 BOAT STATUS</div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;">
+            <div>AT: <span style="color:#32cd32;font-weight:bold">{{ boat_position }}</span></div>
+            <div>TURN: {{ turn }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel pixel-border">
+    <h3 style="color:#ffed4e">🎒 Inventory</h3>
+    {% for item in inventory %}
+      <div class="inventory-item">
+        <div>{{ item.name }}</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div style="color:#ffed4e;font-weight:bold;">×{{ item.qty }}</div>
+          <button class="action-btn" onclick="eatItem('{{ item.name }}')">EAT</button>
+        </div>
+      </div>
+    {% else %}
+      <div style="color:#ddd">Your inventory is empty.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+function eatItem(item) {
+  fetch('/api/action/eat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({item: item})
+  }).then(r=>r.json()).then(j=>{
+    if (j.ok) {
+      alert('Ate '+item +'. Hunger: '+j.hunger);
+      window.location.reload();
+    } else {
+      alert('Error: '+(j.error||'unknown'));
+    }
+  });
+}
+</script>
+{% endblock %}
