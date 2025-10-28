@@ -1,98 +1,96 @@
 from datetime import datetime
-from extensions import db
-from sqlalchemy.dialects.postgresql import JSON
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import JSON
+from app import db  # careful: this file is imported after create_app init; in migrations it'll be fine
+
+# NOTE: to avoid circular import when running tests, you can import db from app after factory init.
+# For clarity we assume app imports models after db.init_app(app) as in app.py.
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nickname = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_admin = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    player = db.relationship('Player', uselist=False, back_populates='user')
-
-class Player(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True)
-    nickname = db.Column(db.String(80))
+    # stats
+    hunger = db.Column(db.Integer, default=0)  # 0..max_hunger
+    max_hunger = db.Column(db.Integer, default=2)  # for now 2
     health = db.Column(db.Integer, default=5)
-    hunger = db.Column(db.Integer, default=0)
     intelligence = db.Column(db.Integer, default=0)
-    virtue = db.Column(db.Integer, default=0)
     level = db.Column(db.Integer, default=1)
-    money_shillings = db.Column(db.Integer, default=10)
-    location = db.Column(db.String(120), default='Ocean View')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    user = db.relationship('User', back_populates='player')
-    inventory = db.relationship('Inventory', back_populates='player')
-    properties = db.relationship('Property', back_populates='player')
+    virtue = db.Column(db.Integer, default=0)
+    # money stored as shillings (1 pound = 20 shillings)
+    money_shillings = db.Column(db.Integer, default=10)  # 10 shillings to start
+
+    def display_money(self):
+        pounds = self.money_shillings // 20
+        shillings = self.money_shillings % 20
+        return f"{pounds}£ {shillings}s"
 
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
-    description = db.Column(db.String(255))
-    edible_hunger = db.Column(db.Integer, default=0)
+    edible_hunger = db.Column(db.Integer, default=0)  # hunger points restored by eating
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @classmethod
+    def get_or_create(cls, name, edible_hunger=0):
+        it = cls.query.filter_by(name=name).first()
+        if it:
+            return it
+        it = cls(name=name, edible_hunger=edible_hunger)
+        db.session.add(it)
+        db.session.commit()
+        return it
 
 class Inventory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    player_id = db.Column(db.Integer, db.ForeignKey('player.id'))
-    item_id = db.Column(db.Integer, db.ForeignKey('item.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     qty = db.Column(db.Integer, default=0)
-    player = db.relationship('Player', back_populates='inventory')
-    item = db.relationship('Item')
-
-class Property(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    player_id = db.Column(db.Integer, db.ForeignKey('player.id'))
-    location = db.Column(db.String(120))
-    planted_item = db.Column(db.String(120))
-    planted_at_turn = db.Column(db.Integer)
-    ready_at_turn = db.Column(db.Integer)
-    player = db.relationship('Player', back_populates='properties')
-
-class Listing(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    seller_id = db.Column(db.Integer, db.ForeignKey('player.id'))
-    city = db.Column(db.String(120))
-    item_id = db.Column(db.Integer, db.ForeignKey('item.id'))
-    qty = db.Column(db.Integer, default=0)
-    price_shillings = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    item = db.relationship('Item')
-
-class Message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    subject = db.Column(db.String(200))
-    body = db.Column(db.Text)
-    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
-    read = db.Column(db.Boolean, default=False)
-
-class TavernMessage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    location = db.Column(db.String(120))
-    username = db.Column(db.String(120))
-    message = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    player_id = db.Column(db.Integer, db.ForeignKey('player.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     task_type = db.Column(db.String(120))
     params = db.Column(JSON, default={})
     turn_number = db.Column(db.Integer)
     resolve_turn = db.Column(db.Integer)
-    status = db.Column(db.String(50), default='pending')
+    status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Boat(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120))
-    route = db.Column(JSON, default=[])
+    route = db.Column(JSON, default=[])  # list of city names
     current_index = db.Column(db.Integer, default=0)
+    stuck_turns = db.Column(db.Integer, default=0)
 
-class News(db.Model):
+class City(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(255))
+    name = db.Column(db.String(120), unique=True)
+    description = db.Column(db.Text)
+
+class Listing(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    city_id = db.Column(db.Integer, db.ForeignKey('city.id'))
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'))
+    qty = db.Column(db.Integer, default=0)
+    price_shillings = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Property(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    city_id = db.Column(db.Integer, db.ForeignKey('city.id'))
+    name = db.Column(db.String(200))
+
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     body = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_tavern = db.Column(db.Boolean, default=False)
+    is_news = db.Column(db.Boolean, default=False)
