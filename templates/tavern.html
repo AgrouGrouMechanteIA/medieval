@@ -1,1 +1,36 @@
-<!doctype html><html><head><meta charset='utf-8'><title>Tavern</title></head><body><a href='{{ url_for("world.game") }}'>← Back</a><h1>Tavern - {{ location }}</h1><form method='post'><input name='message' placeholder='Say something'><button>Send</button></form><ul>{% for m in messages %}<li><strong>{{ m.username }}:</strong> {{ m.message }}</li>{% endfor %}</ul></body></html>
+{% extends "base.html" %}
+{% block content %}
+<div class="panel pixel-border">
+  <h2 style="color:#ffed4e">🍺 Tavern</h2>
+  <div style="height:300px;overflow:auto;background:#111;padding:8px;border:2px solid #000;color:#fff;">
+    {% for m in messages %}
+      <div style="margin-bottom:6px;"><strong>{{ m.sender_id and (m.sender_id|int) or 'System' }}:</strong> {{ m.body }}</div>
+    {% else %}
+      <div>No messages yet.</div>
+    {% endfor %}
+  </div>
+
+  <div style="margin-top:8px;">
+    <input id="msg" placeholder="Say something..." style="width:70%;padding:8px;">
+    <button class="action-btn" onclick="send()">SEND</button>
+    <button class="action-btn" onclick="drink()">HAVE A DRINK</button>
+  </div>
+  <div style="margin-top:12px;"><a href="{{ url_for('game') }}" class="action-btn">← Back</a></div>
+</div>
+
+<script>
+function send() {
+  const body = document.getElementById('msg').value;
+  fetch('/api/message/send', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ body: body, is_tavern: true })
+  }).then(r=>r.json()).then(j=>{ if (j.ok) location.reload(); else alert('err'); });
+}
+function drink() {
+  fetch('/api/message/send', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ body: 'has a drink 🍻', is_tavern: true })
+  }).then(r=>r.json()).then(j=>{ if (j.ok) location.reload(); else alert('err'); });
+}
+</script>
+{% endblock %}
