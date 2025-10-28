@@ -1,1 +1,42 @@
-<!doctype html><html><head><meta charset='utf-8'><title>Market</title></head><body><a href='{{ url_for("world.game") }}'>← Back</a><h1>Market</h1><table border='1'><tr><th>Seller</th><th>Item</th><th>Qty</th><th>Price</th></tr>{% for l in listings %}<tr><td>{{ l.seller_id }}</td><td>{{ l.item.name if l.item else 'Unknown' }}</td><td>{{ l.qty }}</td><td>{{ l.price_shillings//20 }}£ {{ l.price_shillings%20 }}s</td></tr>{% endfor %}</table></body></html>
+{% extends "base.html" %}
+{% block content %}
+<div class="panel pixel-border">
+  <h2 style="color:#ffed4e">🏪 Market</h2>
+  <table style="width:100%;border-collapse:collapse;color:#fff">
+    <thead style="background:#654321;color:#ffed4e;">
+      <tr><th>SELLER</th><th>ITEM</th><th>QTY</th><th>PRICE</th><th>ACTION</th></tr>
+    </thead>
+    <tbody>
+      {% for l in listings %}
+      <tr>
+        <td>{{ l.seller }}</td>
+        <td>{{ l.item }}</td>
+        <td>{{ l.qty }}</td>
+        <td>{{ l.price_pounds }}£ {{ l.price_shillings }}s</td>
+        <td><button onclick="buy({{ l.id }})" class="action-btn">BUY</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No listings.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:12px;"><a href="{{ url_for('game') }}" class="action-btn">← Back</a></div>
+</div>
+
+<script>
+function buy(id) {
+  fetch('/api/market/buy', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({listing_id: id, qty: 1})
+  }).then(r=>r.json()).then(j=>{
+    if (j.ok) {
+      alert('Bought!');
+      window.location.reload();
+    } else {
+      alert('Error: '+(j.error||'unknown'));
+    }
+  });
+}
+</script>
+{% endblock %}
