@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel pixel-border">
+  <h2 style="color:#ffed4e">🎒 Inventory</h2>
+  {% for it in items %}
+    <div class="inventory-item">
+      <div>{{ it.name }}</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div style="color:#ffed4e;font-weight:bold;">×{{ it.qty }}</div>
+        <button class="action-btn" onclick="eatItem('{{ it.name }}')">EAT</button>
+      </div>
+    </div>
+  {% else %}
+    <div>No items yet.</div>
+  {% endfor %}
+  <div style="margin-top:12px;"><a href="{{ url_for('game') }}" class="action-btn">← Back</a></div>
+</div>
+
+<script>
+function eatItem(item) {
+  fetch('/api/action/eat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({item: item})
+  }).then(r=>r.json()).then(j=>{
+    if (j.ok) {
+      alert('Ate '+item +'. Hunger: '+j.hunger);
+      window.location.reload();
+    } else {
+      alert('Error: '+(j.error||'unknown'));
+    }
+  });
+}
+</script>
+{% endblock %}
