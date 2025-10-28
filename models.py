@@ -1,96 +1,145 @@
+# models.py
 from datetime import datetime
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import JSON
-from app import db  # careful: this file is imported after create_app init; in migrations it'll be fine
+from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy import Integer, Column, String, Text, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy.orm import relationship
+from extensions import db
 
-# NOTE: to avoid circular import when running tests, you can import db from app after factory init.
-# For clarity we assume app imports models after db.init_app(app) as in app.py.
+# Helper tables and simple models
 
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nickname = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    is_admin = db.Column(db.Boolean, default=False)
-    # stats
-    hunger = db.Column(db.Integer, default=0)  # 0..max_hunger
-    max_hunger = db.Column(db.Integer, default=2)  # for now 2
-    health = db.Column(db.Integer, default=5)
-    intelligence = db.Column(db.Integer, default=0)
-    level = db.Column(db.Integer, default=1)
-    virtue = db.Column(db.Integer, default=0)
-    # money stored as shillings (1 pound = 20 shillings)
-    money_shillings = db.Column(db.Integer, default=10)  # 10 shillings to start
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(80), unique=True, nullable=False)
+    password_hash = Column(String(256), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-    def display_money(self):
-        pounds = self.money_shillings // 20
-        shillings = self.money_shillings % 20
-        return f"{pounds}£ {shillings}s"
+    # Currency (stored in shillings)
+    money_shillings = Column(Integer, default=10)  # user starts with 10 shillings (as requested)
+    # stats
+    hunger = Column(Integer, default=0)           # starts at 0 per your ruling
+    max_hunger = Column(Integer, default=2)       # fixed max hunger = 2
+    health = Column(Integer, default=5)
+    max_health = Column(Integer, default=5)
+
+    intelligence = Column(Integer, default=0)
+    virtue = Column(Integer, default=0)           # appears at level >= 2 (but stored always)
+    level = Column(Integer, default=1)
+    xp = Column(Integer, default=0)
+
+    # misc
+    mailbox = Column(JSON, default=list)          # simple JSON list of messages (could be normalized later)
+
+    # relationships
+    inventory = relationship("Inventory", back_populates="user", cascade="all, delete-orphan")
+    tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
+    properties = relationship("Property", back_populates="owner", cascade="all, delete-orphan")
+
+    def add_money(self, shillings: int):
+        self.money_shillings = max(0, (self.money_shillings or 0) + int(shillings))
+
+    def remove_money(self, shillings: int):
+        if (self.money_shillings or 0) < shillings:
+            raise ValueError("Insufficient funds")
+        self.money_shillings -= shillings
+
+    def xp_to_next_level(self):
+        # Example simple formula, tweakable
+        return 10 * self.level
+
+    def maybe_level_up(self):
+        # If xp reaches threshold, level up until xp < threshold
+        leveled = False
+        while self.xp >= self.xp_to_next_level():
+            self.xp -= self.xp_to_next_level()
+            self.level += 1
+            leveled = True
+            # grant a small reward for leveling (1 intelligence point by default)
+            self.intelligence = (self.intelligence or 0) + 1
+            # expand max_hunger or health at certain levels if desired
+            # note: Level 2 unlocks virtue UI (but we keep virtue stored always)
+        return leveled
 
 class Item(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), unique=True, nullable=False)
-    edible_hunger = db.Column(db.Integer, default=0)  # hunger points restored by eating
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    @classmethod
-    def get_or_create(cls, name, edible_hunger=0):
-        it = cls.query.filter_by(name=name).first()
-        if it:
-            return it
-        it = cls(name=name, edible_hunger=edible_hunger)
-        db.session.add(it)
-        db.session.commit()
-        return it
+    __tablename__ = "items"
+    id = Column(Integer, primary_key=True)
+    key = Column(String(80), unique=True, nullable=False)  # e.g. 'chestnut', 'bread'
+    display_name = Column(String(120), nullable=False)
+    edible_hunger = Column(Integer, default=0)  # hunger points restored if eaten
+    description = Column(Text, default="")
+    stackable = Column(Boolean, default=True)
 
 class Inventory(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
-    qty = db.Column(db.Integer, default=0)
+    __tablename__ = "inventories"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
+    quantity = Column(Integer, default=0)
+
+    user = relationship("User", back_populates="inventory")
+    item = relationship("Item")
 
 class Task(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    task_type = db.Column(db.String(120))
-    params = db.Column(JSON, default={})
-    turn_number = db.Column(db.Integer)
-    resolve_turn = db.Column(db.Integer)
-    status = db.Column(db.String(20), default='pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __tablename__ = "tasks"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    action = Column(String(120), nullable=False)  # e.g. 'plant_wheat', 'gather_mushrooms', 'embark'
+    params = Column(MutableDict.as_mutable(JSON), default={})
+    start_turn = Column(Integer, nullable=False)
+    resolve_turn = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved = Column(Boolean, default=False)
+    result = Column(JSON, nullable=True)
 
-class Boat(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120))
-    route = db.Column(JSON, default=[])  # list of city names
-    current_index = db.Column(db.Integer, default=0)
-    stuck_turns = db.Column(db.Integer, default=0)
+    user = relationship("User", back_populates="tasks")
 
 class City(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), unique=True)
-    description = db.Column(db.Text)
+    __tablename__ = "cities"
+    id = Column(Integer, primary_key=True)
+    key = Column(String(80), unique=True, nullable=False)   # internal key e.g. 'beautiful_forest'
+    name = Column(String(120), nullable=False)
+    region = Column(String(80), nullable=False)
+    description = Column(Text, default="")
+    has_market = Column(Boolean, default=True)
+    has_tavern = Column(Boolean, default=True)
+    is_colonisable = Column(Boolean, default=False)
+    founder_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 class Listing(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    city_id = db.Column(db.Integer, db.ForeignKey('city.id'))
-    item_id = db.Column(db.Integer, db.ForeignKey('item.id'))
-    qty = db.Column(db.Integer, default=0)
-    price_shillings = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __tablename__ = "listings"
+    id = Column(Integer, primary_key=True)
+    seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
+    quantity = Column(Integer, default=0)
+    price_shillings = Column(Integer, default=0)  # price for whole lot (expressed in shillings)
+    city_id = Column(Integer, ForeignKey("cities.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Boat(db.Model):
+    __tablename__ = "boats"
+    id = Column(Integer, primary_key=True)
+    key = Column(String(80), unique=True, nullable=False)  # 'boat', 'grand_boat_1', etc.
+    route = Column(JSON, default=list)   # ordered list of city keys for the loop
+    current_index = Column(Integer, default=0)
+    stuck = Column(Boolean, default=False)
+    stuck_turns = Column(Integer, default=0)
+    last_moved_turn = Column(Integer, default=0)
+    has_tavern = Column(Boolean, default=True)
 
 class Property(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    city_id = db.Column(db.Integer, db.ForeignKey('city.id'))
-    name = db.Column(db.String(200))
+    __tablename__ = "properties"
+    id = Column(Integer, primary_key=True)
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    city_id = Column(Integer, ForeignKey("cities.id"))
+    name = Column(String(120), default="Property")
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-class Message(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    body = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    is_tavern = db.Column(db.Boolean, default=False)
-    is_news = db.Column(db.Boolean, default=False)
+    owner = relationship("User", back_populates="properties")
+
+class News(db.Model):
+    __tablename__ = "news"
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    title = Column(String(240))
+    body = Column(Text)
+    meta = Column(JSON, default={})
